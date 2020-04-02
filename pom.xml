@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+
+    <!-- Project Information -->
+    <name>Java Card RomMask Generator</name>
+    <description>A generator of the CHOUPI Java Card Virtual Machine rommask generator.</description>
+    <url>.https://github.com/choupi-project</url>
+    <inceptionYear>2020</inceptionYear>
+
+    <organization>
+        <name>National Cybersecurity Agency of France (ANSSI)</name>
+        <url>https://www.ssi.gouv.fr/</url>
+    </organization>
+
+    <developers>
+        <developer>
+            <id>_Stroumph</id>
+            <name>Guillaume Bouffard</name>
+            <email>guillaume.bouffard@ssi.gouv.fr</email>
+            <organization>National Cybersecurity Agency of France (ANSSI)</organization>
+            <organizationUrl>https://www.ssi.gouv.fr/</organizationUrl>
+            <roles>
+                <role>Lead developer</role>
+            </roles>
+            <timezone>Europe/Paris</timezone>
+        </developer>
+    </developers>
+
+    <contributors>
+    </contributors>
+
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>http://www.opensource.org/licenses/mit-license.php</url>
+        </license>
+    </licenses>
+
+    <groupId>fr.gouv.ssi.rommask.jcaparser</groupId>
+    <artifactId>rommask</artifactId>
+    <packaging>jar</packaging>
+    <version>1.0</version>
+    <properties>
+        <maven.compiler.source>10</maven.compiler.source>
+        <maven.compiler.target>10</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <license.useMissingFile>true</license.useMissingFile>
+        <license.failIfWarning>true</license.failIfWarning>
+        <license.licenseName>mit</license.licenseName>
+    </properties>
+
+    <scm>
+        <connection>scm:git:https://github.com/choupi-project/rommask.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/choupi-project/rommask.git</developerConnection>
+        <url>https://github.com/choupi-project/rommask</url>
+        <tag>HEAD</tag>
+    </scm>
+    <issueManagement>
+        <system>github</system>
+        <url>https://github.com/choupi-project/rommask/issues/</url>
+    </issueManagement>
+    <distributionManagement>
+        <site>
+            <id>github</id>
+            <url>scm:git:git@github.com:choupi-project/rommask.git</url>
+        </site>
+    </distributionManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>net.java.dev.javacc</groupId>
+            <artifactId>javacc</artifactId>
+            <version>7.0.4</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.xlim.ssd.capmap</groupId>
+            <artifactId>library</artifactId>
+            <version>0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>27.1-jre</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>javacc-maven-plugin</artifactId>
+                <version>2.5</version>
+                <executions>
+                    <execution>
+                        <id>javacc</id>
+                        <goals>
+                            <goal>javacc</goal>
+                        </goals>
+                        <configuration>
+                            <sourceDirectory>${basedir}/src/main/java/fr/gouv/ssi/rommask/jcaparser/</sourceDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.0</version>
+                <configuration>
+                    <compilerArgs>
+                        <arg>-Xlint:unchecked</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <!-- Jar file entry point -->
+                            <mainClass>fr.gouv.ssi.rommask.Main</mainClass>
+                        </manifest>
+                    </archive>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>2.0.0</version>
+                <configuration>
+                    <verbose>false</verbose>
+                    <licenseName>mit</licenseName>
+                    <roots>
+                        <root>src/main/java</root>
+                        <root>src/test</root>
+                    </roots>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>first</id>
+                        <goals>
+                            <goal>update-file-header</goal>
+                        </goals>
+                        <phase>process-sources</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <show>protected</show>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>

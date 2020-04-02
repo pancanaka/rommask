@@ -1,0 +1,3 @@
+[submodule "capmap-free"]
+	path = capmap-free
+	url = https://bitbucket.org/ssd/capmap-free.git

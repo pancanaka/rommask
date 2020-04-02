@@ -1,0 +1,1544 @@
+/*-
+ * #%L
+ * Java Card RomMask Generator
+ * %%
+ * Copyright (C) 2020 National Cybersecurity Agency of France (ANSSI)
+ * %%
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ * #L%
+ */
+
+options {
+  JAVA_UNICODE_ESCAPE = true;
+  ERROR_REPORTING = true;
+  STATIC=false;
+}
+
+PARSER_BEGIN(JCAParser)
+
+  package fr.gouv.ssi.rommask.jcaparser;
+
+  import java.util.ArrayList;
+  import java.io.*;
+
+  public class JCAParser {
+
+    /**
+     * Parsing the file given in parameter
+     *
+     * @param filename the file name to parse
+     */
+    public static JCAFile parseFile(String filename) throws java.io.FileNotFoundException, ParseException {
+      JCAFile JCAFile;
+      JCAParser parser;
+
+      System.out.println("[ ] Parsing " + filename);
+
+      // Intializing the JCA jcaparser
+      try {
+        FileInputStream in = new FileInputStream(filename);
+        parser = new JCAParser(in);
+      } catch (FileNotFoundException e) {
+        System.out.println("[!] File " + filename + " not found");
+        throw e;
+      }
+
+      // Parsing file
+      try {
+        JCAFile = parser.PackageUnit();
+      } catch (ParseException e) {
+        System.out.println(e.getMessage());
+        System.out.println("[!] Encountered errors during parse.");
+        throw e;
+      }
+
+      return JCAFile;
+    }
+
+    /**
+     * Get JCA type from string
+     *
+     * @param type String type
+     * @param isArray is an array type ? Must be false by default
+     * @return JCA Type
+     */
+    private JCAType getType(String type, boolean isArray) throws ParseException {
+        switch(type.charAt(0)) {
+            case 'B': // Byte
+                return new JCAType(Type.BYTE, isArray);
+            case 'Z': // Boolean
+                return new JCAType(Type.BOOLEAN, isArray);
+            case 'S': // Short
+                return new JCAType(Type.SHORT, isArray);
+            case 'I': // Integer
+                return new JCAType(Type.INT, isArray);
+            case 'L': // Object
+                int end = type.indexOf(";");
+                return new JCAType(type.substring(1, end), isArray);
+            case 'V': // Void
+                return new JCAType(Type.VOID, isArray);
+            case '[': // Array
+                // multidimension array is not allow in Java Card
+                return getType(type.substring(1, type.length()), true);
+            default:
+                throw new ParseException("Parsed value (" + type.charAt(0) + ") is incorrect");
+        }
+    }
+  }
+PARSER_END(JCAParser)
+
+/* WHITE SPACE */
+SKIP :
+{
+  " "
+  | "\t"
+  | "\n"
+  | "\r"
+  | "\f"
+}
+
+/* COMMENTS */
+MORE :
+{
+  "//" : IN_SINGLE_LINE_COMMENT
+ | <"/**" ~["/"]> { input_stream.backup(1); } : IN_FORMAL_COMMENT
+ | "/*" : IN_MULTI_LINE_COMMENT
+}
+
+<IN_SINGLE_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+  <SINGLE_LINE_COMMENT: "\n" | "\r" | "\r\n" > : DEFAULT
+}
+
+<IN_FORMAL_COMMENT>
+SPECIAL_TOKEN :
+{
+  <FORMAL_COMMENT: "*/" > : DEFAULT
+}
+
+<IN_MULTI_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+  <MULTI_LINE_COMMENT: "*/" > : DEFAULT
+}
+
+<IN_SINGLE_LINE_COMMENT,IN_FORMAL_COMMENT,IN_MULTI_LINE_COMMENT>
+MORE :
+{
+  < ~[] >
+}
+
+//Literal type
+TOKEN :
+{
+ <INTEGER_LITERAL: ("-")? <DECIMAL_LITERAL> (["l","L"])? | <HEX_LITERAL> (["l","L"])? | <OCTAL_LITERAL> (["l","L"])?>
+ | <#DECIMAL_LITERAL: ["1"-"9"] (["0"-"9"])*>
+ | <#HEX_LITERAL: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+>
+ | <#OCTAL_LITERAL: "0" (["0"-"7"])*>
+ | <CHARACTER_LITERAL: "\'" (~["\'","\\","\n","\r"] | "\\" (["n","t","b","r","f","\\","\'","\""] | ["0"-"7"] (["0"-"7"])? | ["0"-"3"] ["0"-"7"] ["0"-"7"])) "\'">
+}
+
+TOKEN :
+{
+   <LBRACE:      "{">
+   | <RBRACE:    "}">
+   | <LPAREN:    "(">
+   | <RPAREN:    ")">
+   | <LBRACKET:  "[">
+   | <RBRACKET:  "]">
+   | <COLON:     ":">
+   | <SEMICOLON: ";">
+   | <DOT:       ".">
+   | <COMMA:     ",">
+   | <EQUALS:    "=">
+}
+
+TOKEN :
+{
+  <PRIMITIVE_TYPE: "boolean" | "byte" | "short" | "int">
+  | <CP_TYPE: ((<LBRACKET>)? <TYPE>)+>
+  | <#TYPE: "V" | "B" | "Z" | "S" | "I" | <CP_OBJECT>>
+  | <#CP_OBJECT: "L" <NAME> <SEMICOLON>>
+  | <IDENTIFIER: <INTEGER_LITERAL> <DOT> <INTEGER_LITERAL>>
+  | <CP_METHOD: <IDENTIFIER> <DOT> <INTEGER_LITERAL>>
+}
+
+/* RESERVED WORDS AND LITERALS */
+//accessor
+TOKEN :
+{
+   <FINAL:       "final">
+   | <NATIVE:    "native">
+   | <REMOTE:    <DOT> "remote">
+   | <SHAREABLE: <DOT> "shareable">
+   | <STATIC:    "static">
+   | <PUBLIC:    "public">
+   | <PRIVATE:   "private">
+   | <ABSTRACT:  "abstract">
+   | <PROTECTED: "protected">
+}
+TOKEN :
+{
+   <AID_VALUE: <INTEGER_LITERAL> (<COLON> <INTEGER_LITERAL>)+>
+   | <AID: <DOT> "aid">
+   | <VERSION: <DOT> "version">
+}
+
+//CAP Components
+TOKEN [IGNORE_CASE] :
+{
+   <PACKAGE:        <DOT> "package">
+   | <IMPORTS:      <DOT> "imports">
+   | <APPLET:       <DOT> "applet" ("s")?>
+   | <CONSTANTPOOL: <DOT> "constantPool">
+   | <CLASS:        <DOT> "class">
+   | <METHOD:       <DOT> "method">
+   | <DESCRIPTOR:   <DOT> "descriptor" ("s")?>
+}
+
+// Constant Pool value
+TOKEN [IGNORE_CASE] :
+{
+   <SUPERMETHODREF: "superMethodRef">
+   | <STATICFIELDREF: "staticFieldRef">
+   | <STATICMETHODREF: "staticMethodRef">
+   | <INSTANCEFIELDREF: "instanceFieldRef">
+   | <VIRTUALMETHODREF: "virtualMethodRef">
+   | <CLASSREF: <DOT> "classRef">
+}
+
+//Class value
+TOKEN [IGNORE_CASE] :
+{
+   <FIELDS: <DOT> "fields">
+   | <EXTENDS: "extends">
+   | <INTERFACE: <DOT> "interface">
+   | <SUPER_INTERFACE: <DOT> "superInterfaces">
+   | <PUBLIC_METHODTABLE: <DOT> "publicmethodtable">
+   | <PACKAGE_METHODTABLE: <DOT> "packagemethodtable">
+   | <INTERFACE_TABLE: <DOT> "implementedinterfaceinfotable">
+   | <REMOTE_INTERFACE_TABLE: <DOT> "implementedremoteinterfaceinfotable">
+}
+
+//Exception table
+TOKEN [IGNORE_CASE] :
+{
+   <EXCEPTION_TABLE: <DOT> "exceptionTable">
+}
+
+TOKEN [IGNORE_CASE] :
+{
+    <BOOLEAN: ("true" | "false")>
+}
+
+TOKEN:
+{
+  <METHOD_STACK: <DOT> "stack">
+  | <METHOD_LOCALS: <DOT> "locals">
+}
+
+<BYTECODES> TOKEN :
+{
+     /* 0x00 */ <NOP: "nop">
+     /* 0x01 */ | <ACONST_NULL: "aconst_null">
+     /* 0x02 */ | <SCONST_M1: "sconst_m1">
+     /* 0x03 */ | <SCONST_0: "sconst_0">
+     /* 0x04 */ | <SCONST_1: "sconst_1">
+     /* 0x05 */ | <SCONST_2: "sconst_2">
+     /* 0x06 */ | <SCONST_3: "sconst_3">
+     /* 0x07 */ | <SCONST_4: "sconst_4">
+     /* 0x08 */ | <SCONST_5: "sconst_5">
+     /* 0x09 */ | <ICONST_M1: "iconst_m1">
+     /* 0x0a */ | <ICONST_0: "iconst_0">
+     /* 0x0b */ | <ICONST_1: "iconst_1">
+     /* 0x0c */ | <ICONST_2: "iconst_2">
+     /* 0x0d */ | <ICONST_3: "iconst_3">
+     /* 0x0e */ | <ICONST_4: "iconst_4">
+     /* 0x0f */ | <ICONST_5: "iconst_5">
+     /* 0x10 */ | <BSPUSH: "bspush">
+     /* 0x11 */ | <SSPUSH: "sspush">
+     /* 0x12 */ | <BIPUSH: "bipush">
+     /* 0x13 */ | <SIPUSH: "sipush">
+     /* 0x14 */ | <IIPUSH: "iipush">
+     /* 0x15 */ | <ALOAD: "aload">
+     /* 0x16 */ | <SLOAD: "sload">
+     /* 0x17 */ | <ILOAD: "iload">
+     /* 0x18 */ | <ALOAD_0: "aload_0">
+     /* 0x19 */ | <ALOAD_1: "aload_1">
+     /* 0x1a */ | <ALOAD_2: "aload_2">
+     /* 0x1b */ | <ALOAD_3: "aload_3">
+     /* 0x1c */ | <SLOAD_0: "sload_0">
+     /* 0x1d */ | <SLOAD_1: "sload_1">
+     /* 0x1e */ | <SLOAD_2: "sload_2">
+     /* 0x1f */ | <SLOAD_3: "sload_3">
+     /* 0x20 */ | <ILOAD_0: "iload_0">
+     /* 0x21 */ | <ILOAD_1: "iload_1">
+     /* 0x22 */ | <ILOAD_2: "iload_2">
+     /* 0x23 */ | <ILOAD_3: "iload_3">
+     /* 0x24 */ | <AALOAD: "aaload">
+     /* 0x25 */ | <BALOAD: "baload">
+     /* 0x26 */ | <SALOAD: "saload">
+     /* 0x27 */ | <IALOAD: "iaload">
+     /* 0x28 */ | <ASTORE: "astore">
+     /* 0x29 */ | <SSTORE: "sstore">
+     /* 0x2a */ | <ISTORE: "istore">
+     /* 0x2b */ | <ASTORE_0: "astore_0">
+     /* 0x2c */ | <ASTORE_1: "astore_1">
+     /* 0x2d */ | <ASTORE_2: "astore_2">
+     /* 0x2e */ | <ASTORE_3: "astore_3">
+     /* 0x2f */ | <SSTORE_0: "sstore_0">
+     /* 0x30 */ | <SSTORE_1: "sstore_1">
+     /* 0x31 */ | <SSTORE_2: "sstore_2">
+     /* 0x32 */ | <SSTORE_3: "sstore_3">
+     /* 0x33 */ | <ISTORE_0: "istore_0">
+     /* 0x34 */ | <ISTORE_1: "istore_1">
+     /* 0x35 */ | <ISTORE_2: "istore_2">
+     /* 0x36 */ | <ISTORE_3: "istore_3">
+     /* 0x37 */ | <AASTORE: "aastore">
+     /* 0x38 */ | <BASTORE: "bastore">
+     /* 0x39 */ | <SASTORE: "sastore">
+     /* 0x3a */ | <IASTORE: "iastore">
+     /* 0x3b */ | <POP: "pop">
+     /* 0x3c */ | <POP2: "pop2">
+     /* 0x3d */ | <DUP: "dup">
+     /* 0x3e */ | <DUP2: "dup2">
+     /* 0x3f */ | <DUP_X: "dup_x">
+     /* 0x40 */ | <SWAP_X: "swap_x">
+     /* 0x41 */ | <SADD: "sadd">
+     /* 0x42 */ | <IADD: "iadd">
+     /* 0x43 */ | <SSUB: "ssub">
+     /* 0x44 */ | <ISUB: "isub">
+     /* 0x45 */ | <SMUL: "smul">
+     /* 0x46 */ | <IMUL: "imul">
+     /* 0x47 */ | <SDIV: "sdiv">
+     /* 0x48 */ | <IDIV: "idiv">
+     /* 0x49 */ | <SREM: "srem">
+     /* 0x4a */ | <IREM: "irem">
+     /* 0x4b */ | <SNEG: "sneg">
+     /* 0x4c */ | <INEG: "ineg">
+     /* 0x4d */ | <SSHL: "sshl">
+     /* 0x4e */ | <ISHL: "ishl">
+     /* 0x4f */ | <SSHR: "sshr">
+     /* 0x50 */ | <ISHR: "ishr">
+     /* 0x51 */ | <SUSHR: "sushr">
+     /* 0x52 */ | <IUSHR: "iushr">
+     /* 0x53 */ | <SAND: "sand">
+     /* 0x54 */ | <IAND: "iand">
+     /* 0x55 */ | <SOR: "sor">
+     /* 0x56 */ | <IOR: "ior">
+     /* 0x57 */ | <SXOR: "sxor">
+     /* 0x58 */ | <IXOR: "ixor">
+     /* 0x59 */ | <SINC: "sinc">
+     /* 0x5a */ | <IINC: "iinc">
+     /* 0x5b */ | <S2B: "s2b">
+     /* 0x5c */ | <S2I: "s2i">
+     /* 0x5d */ | <I2B: "i2b">
+     /* 0x5e */ | <I2S: "i2s">
+     /* 0x5f */ | <ICMP: "icmp">
+     /* 0x60 */ | <IFEQ: "ifeq">
+     /* 0x61 */ | <IFNE: "ifne">
+     /* 0x62 */ | <IFLT: "iflt">
+     /* 0x63 */ | <IFGE: "ifge">
+     /* 0x64 */ | <IFGT: "ifgt">
+     /* 0x65 */ | <IFLE: "ifle">
+     /* 0x66 */ | <IFNULL: "ifnull">
+     /* 0x67 */ | <IFNONNULL: "ifnonnull">
+     /* 0x68 */ | <IF_ACMPEQ: "if_acmpeq">
+     /* 0x69 */ | <IF_ACMPNE: "if_acmpne">
+     /* 0x6a */ | <IF_SCMPEQ: "if_scmpeq">
+     /* 0x6b */ | <IF_SCMPNE: "if_scmpne">
+     /* 0x6c */ | <IF_SCMPLT: "if_scmplt">
+     /* 0x6d */ | <IF_SCMPGE: "if_scmpge">
+     /* 0x6e */ | <IF_SCMPGT: "if_scmpgt">
+     /* 0x6f */ | <IF_SCMPLE: "if_scmple">
+     /* 0x70 */ | <GOTO: "goto">
+     /* 0x71 */ | <JSR: "jsr">
+     /* 0x72 */ | <RET: "ret">
+     /* 0x73 */ | <STABLESWITCH: "stableswitch">
+     /* 0x74 */ | <ITABLESWITCH: "itableswitch">
+     /* 0x75 */ | <SLOOKUPSWITCH: "slookupswitch">
+     /* 0x76 */ | <ILOOKUPSWITCH: "ilookupswitch">
+     /* 0x77 */ | <ARETURN: "areturn">
+     /* 0x78 */ | <SRETURN: "sreturn">
+     /* 0x79 */ | <IRETURN: "ireturn">
+     /* 0x7a */ | <RETURN: "return">
+     /* 0x7b */ | <GETSTATIC_A: "getstatic_a">
+     /* 0x7c */ | <GETSTATIC_B: "getstatic_b">
+     /* 0x7d */ | <GETSTATIC_S: "getstatic_s">
+     /* 0x7e */ | <GETSTATIC_I: "getstatic_i">
+     /* 0x7f */ | <PUTSTATIC_A: "putstatic_a">
+     /* 0x80 */ | <PUTSTATIC_B: "putstatic_b">
+     /* 0x81 */ | <PUTSTATIC_S: "putstatic_s">
+     /* 0x82 */ | <PUTSTATIC_I: "putstatic_i">
+     /* 0x83 */ | <GETFIELD_A: "getfield_a">
+     /* 0x84 */ | <GETFIELD_B: "getfield_b">
+     /* 0x85 */ | <GETFIELD_S: "getfield_s">
+     /* 0x86 */ | <GETFIELD_I: "getfield_i">
+     /* 0x87 */ | <PUTFIELD_A: "putfield_a">
+     /* 0x88 */ | <PUTFIELD_B: "putfield_b">
+     /* 0x89 */ | <PUTFIELD_S: "putfield_s">
+     /* 0x8a */ | <PUTFIELD_I: "putfield_i">
+     /* 0x8b */ | <INVOKEVIRTUAL: "invokevirtual">
+     /* 0x8c */ | <INVOKESPECIAL: "invokespecial">
+     /* 0x8d */ | <INVOKESTATIC: "invokestatic">
+     /* 0x8e */ | <INVOKEINTERFACE: "invokeinterface">
+     /* 0x8f */ | <NEW: "new">
+     /* 0x90 */ | <NEWARRAY: "newarray">
+     /* 0x91 */ | <ANEWARRAY: "anewarray">
+     /* 0x92 */ | <ARRAYLENGTH: "arraylength">
+     /* 0x93 */ | <ATHROW: "athrow">
+     /* 0x94 */ | <CHECKCAST: "checkcast">
+     /* 0x95 */ | <INSTANCEOF: "instanceof">
+     /* 0x96 */ | <SINC_W: "sinc_w">
+     /* 0x97 */ | <IINC_W: "iinc_w">
+     /* 0x98 */ | <IFEQ_W: "ifeq_w">
+     /* 0x99 */ | <IFNE_W: "ifne_w">
+     /* 0x9a */ | <IFLT_W: "iflt_w">
+     /* 0x9b */ | <IFGE_W: "ifge_w">
+     /* 0x9c */ | <IFGT_W: "ifgt_w">
+     /* 0x9d */ | <IFLE_W: "ifle_w">
+     /* 0x9e */ | <IFNULL_W: "ifnull_w">
+     /* 0x9f */ | <IFNONNULL_W: "ifnonnull_w">
+     /* 0xa0 */ | <IF_ACMPEQ_W: "if_acmpeq_w">
+     /* 0xa1 */ | <IF_ACMPNE_W: "if_acmpne_w">
+     /* 0xa2 */ | <IF_SCMPEQ_W: "if_scmpeq_w">
+     /* 0xa3 */ | <IF_SCMPNE_W: "if_scmpne_w">
+     /* 0xa4 */ | <IF_SCMPLT_W: "if_scmplt_w">
+     /* 0xa5 */ | <IF_SCMPGE_W: "if_scmpge_w">
+     /* 0xa6 */ | <IF_SCMPGT_W: "if_scmpgt_w">
+     /* 0xa7 */ | <IF_SCMPLE_W: "if_scmple_w">
+     /* 0xa8 */ | <GOTO_W: "goto_w">
+     /* 0xa9 */ | <GETFIELD_A_W: "getfield_a_w">
+     /* 0xaa */ | <GETFIELD_B_W: "getfield_b_w">
+     /* 0xab */ | <GETFIELD_S_W: "getfield_s_w">
+     /* 0xac */ | <GETFIELD_I_W: "getfield_i_w">
+     /* 0xad */ | <GETFIELD_A_THIS: "getfield_a_this">
+     /* 0xae */ | <GETFIELD_B_THIS: "getfield_b_this">
+     /* 0xaf */ | <GETFIELD_S_THIS: "getfield_s_this">
+     /* 0xb0 */ | <GETFIELD_I_THIS: "getfield_i_this">
+     /* 0xb1 */ | <PUTFIELD_A_W: "putfield_a_w">
+     /* 0xb2 */ | <PUTFIELD_B_W: "putfield_b_w">
+     /* 0xb3 */ | <PUTFIELD_S_W: "putfield_s_w">
+     /* 0xb4 */ | <PUTFIELD_I_W: "putfield_i_w">
+     /* 0xb5 */ | <PUTFIELD_A_THIS: "putfield_a_this">
+     /* 0xb6 */ | <PUTFIELD_B_THIS: "putfield_b_this">
+     /* 0xb7 */ | <PUTFIELD_S_THIS: "putfield_s_this">
+     /* 0xb8 */ | <PUTFIELD_I_THIS: "putfield_i_this">
+}
+
+TOKEN :
+{
+  <BYTECODE:
+  ( /* 0x00 */ <NOP>
+    /* 0x01 */ | <ACONST_NULL>
+    /* 0x02 */ | <SCONST_M1>
+    /* 0x03 */ | <SCONST_0>
+    /* 0x04 */ | <SCONST_1>
+    /* 0x05 */ | <SCONST_2>
+    /* 0x06 */ | <SCONST_3>
+    /* 0x07 */ | <SCONST_4>
+    /* 0x08 */ | <SCONST_5>
+    /* 0x09 */ | <ICONST_M1>
+    /* 0x0a */ | <ICONST_0>
+    /* 0x0b */ | <ICONST_1>
+    /* 0x0c */ | <ICONST_2>
+    /* 0x0d */ | <ICONST_3>
+    /* 0x0e */ | <ICONST_4>
+    /* 0x0f */ | <ICONST_5>
+    /* 0x10 */ | <BSPUSH>
+    /* 0x11 */ | <SSPUSH>
+    /* 0x12 */ | <BIPUSH>
+    /* 0x13 */ | <SIPUSH>
+    /* 0x14 */ | <IIPUSH>
+    /* 0x15 */ | <ALOAD>
+    /* 0x16 */ | <SLOAD>
+    /* 0x17 */ | <ILOAD>
+    /* 0x18 */ | <ALOAD_0>
+    /* 0x19 */ | <ALOAD_1>
+    /* 0x1a */ | <ALOAD_2>
+    /* 0x1b */ | <ALOAD_3>
+    /* 0x1c */ | <SLOAD_0>
+    /* 0x1d */ | <SLOAD_1>
+    /* 0x1e */ | <SLOAD_2>
+    /* 0x1f */ | <SLOAD_3>
+    /* 0x20 */ | <ILOAD_0>
+    /* 0x21 */ | <ILOAD_1>
+    /* 0x22 */ | <ILOAD_2>
+    /* 0x23 */ | <ILOAD_3>
+    /* 0x24 */ | <AALOAD>
+    /* 0x25 */ | <BALOAD>
+    /* 0x26 */ | <SALOAD>
+    /* 0x27 */ | <IALOAD>
+    /* 0x28 */ | <ASTORE>
+    /* 0x29 */ | <SSTORE>
+    /* 0x2a */ | <ISTORE>
+    /* 0x2b */ | <ASTORE_0>
+    /* 0x2c */ | <ASTORE_1>
+    /* 0x2d */ | <ASTORE_2>
+    /* 0x2e */ | <ASTORE_3>
+    /* 0x2f */ | <SSTORE_0>
+    /* 0x30 */ | <SSTORE_1>
+    /* 0x31 */ | <SSTORE_2>
+    /* 0x32 */ | <SSTORE_3>
+    /* 0x33 */ | <ISTORE_0>
+    /* 0x34 */ | <ISTORE_1>
+    /* 0x35 */ | <ISTORE_2>
+    /* 0x36 */ | <ISTORE_3>
+    /* 0x37 */ | <AASTORE>
+    /* 0x38 */ | <BASTORE>
+    /* 0x39 */ | <SASTORE>
+    /* 0x3a */ | <IASTORE>
+    /* 0x3b */ | <POP>
+    /* 0x3c */ | <POP2>
+    /* 0x3d */ | <DUP>
+    /* 0x3e */ | <DUP2>
+    /* 0x3f */ | <DUP_X>
+    /* 0x40 */ | <SWAP_X>
+    /* 0x41 */ | <SADD>
+    /* 0x42 */ | <IADD>
+    /* 0x43 */ | <SSUB>
+    /* 0x44 */ | <ISUB>
+    /* 0x45 */ | <SMUL>
+    /* 0x46 */ | <IMUL>
+    /* 0x47 */ | <SDIV>
+    /* 0x48 */ | <IDIV>
+    /* 0x49 */ | <SREM>
+    /* 0x4a */ | <IREM>
+    /* 0x4b */ | <SNEG>
+    /* 0x4c */ | <INEG>
+    /* 0x4d */ | <SSHL>
+    /* 0x4e */ | <ISHL>
+    /* 0x4f */ | <SSHR>
+    /* 0x50 */ | <ISHR>
+    /* 0x51 */ | <SUSHR>
+    /* 0x52 */ | <IUSHR>
+    /* 0x53 */ | <SAND>
+    /* 0x54 */ | <IAND>
+    /* 0x55 */ | <SOR>
+    /* 0x56 */ | <IOR>
+    /* 0x57 */ | <SXOR>
+    /* 0x58 */ | <IXOR>
+    /* 0x59 */ | <SINC>
+    /* 0x5a */ | <IINC>
+    /* 0x5b */ | <S2B>
+    /* 0x5c */ | <S2I>
+    /* 0x5d */ | <I2B>
+    /* 0x5e */ | <I2S>
+    /* 0x5f */ | <ICMP>
+    /* 0x60 */ | <IFEQ>
+    /* 0x61 */ | <IFNE>
+    /* 0x62 */ | <IFLT>
+    /* 0x63 */ | <IFGE>
+    /* 0x64 */ | <IFGT>
+    /* 0x65 */ | <IFLE>
+    /* 0x66 */ | <IFNULL>
+    /* 0x67 */ | <IFNONNULL>
+    /* 0x68 */ | <IF_ACMPEQ>
+    /* 0x69 */ | <IF_ACMPNE>
+    /* 0x6a */ | <IF_SCMPEQ>
+    /* 0x6b */ | <IF_SCMPNE>
+    /* 0x6c */ | <IF_SCMPLT>
+    /* 0x6d */ | <IF_SCMPGE>
+    /* 0x6e */ | <IF_SCMPGT>
+    /* 0x6f */ | <IF_SCMPLE>
+    /* 0x70 */ | <GOTO>
+    /* 0x71 */ | <JSR>
+    /* 0x72 */ | <RET>
+    /* 0x73 */ | <STABLESWITCH>
+    /* 0x74 */ | <ITABLESWITCH>
+    /* 0x75 */ | <SLOOKUPSWITCH>
+    /* 0x76 */ | <ILOOKUPSWITCH>
+    /* 0x77 */ | <ARETURN>
+    /* 0x78 */ | <SRETURN>
+    /* 0x79 */ | <IRETURN>
+    /* 0x7a */ | <RETURN>
+    /* 0x7b */ | <GETSTATIC_A>
+    /* 0x7c */ | <GETSTATIC_B>
+    /* 0x7d */ | <GETSTATIC_S>
+    /* 0x7e */ | <GETSTATIC_I>
+    /* 0x7f */ | <PUTSTATIC_A>
+    /* 0x80 */ | <PUTSTATIC_B>
+    /* 0x81 */ | <PUTSTATIC_S>
+    /* 0x82 */ | <PUTSTATIC_I>
+    /* 0x83 */ | <GETFIELD_A>
+    /* 0x84 */ | <GETFIELD_B>
+    /* 0x85 */ | <GETFIELD_S>
+    /* 0x86 */ | <GETFIELD_I>
+    /* 0x87 */ | <PUTFIELD_A>
+    /* 0x88 */ | <PUTFIELD_B>
+    /* 0x89 */ | <PUTFIELD_S>
+    /* 0x8a */ | <PUTFIELD_I>
+    /* 0x8b */ | <INVOKEVIRTUAL>
+    /* 0x8c */ | <INVOKESPECIAL>
+    /* 0x8d */ | <INVOKESTATIC>
+    /* 0x8e */ | <INVOKEINTERFACE>
+    /* 0x8f */ | <NEW>
+    /* 0x90 */ | <NEWARRAY>
+    /* 0x91 */ | <ANEWARRAY>
+    /* 0x92 */ | <ARRAYLENGTH>
+    /* 0x93 */ | <ATHROW>
+    /* 0x94 */ | <CHECKCAST>
+    /* 0x95 */ | <INSTANCEOF>
+    /* 0x96 */ | <SINC_W>
+    /* 0x97 */ | <IINC_W>
+    /* 0x98 */ | <IFEQ_W>
+    /* 0x99 */ | <IFNE_W>
+    /* 0x9a */ | <IFLT_W>
+    /* 0x9b */ | <IFGE_W>
+    /* 0x9c */ | <IFGT_W>
+    /* 0x9d */ | <IFLE_W>
+    /* 0x9e */ | <IFNULL_W>
+    /* 0x9f */ | <IFNONNULL_W>
+    /* 0xa0 */ | <IF_ACMPEQ_W>
+    /* 0xa1 */ | <IF_ACMPNE_W>
+    /* 0xa2 */ | <IF_SCMPEQ_W>
+    /* 0xa3 */ | <IF_SCMPNE_W>
+    /* 0xa4 */ | <IF_SCMPLT_W>
+    /* 0xa5 */ | <IF_SCMPGE_W>
+    /* 0xa6 */ | <IF_SCMPGT_W>
+    /* 0xa7 */ | <IF_SCMPLE_W>
+    /* 0xa8 */ | <GOTO_W>
+    /* 0xa9 */ | <GETFIELD_A_W>
+    /* 0xaa */ | <GETFIELD_B_W>
+    /* 0xab */ | <GETFIELD_S_W>
+    /* 0xac */ | <GETFIELD_I_W>
+    /* 0xad */ | <GETFIELD_A_THIS>
+    /* 0xae */ | <GETFIELD_B_THIS>
+    /* 0xaf */ | <GETFIELD_S_THIS>
+    /* 0xb0 */ | <GETFIELD_I_THIS>
+    /* 0xb1 */ | <PUTFIELD_A_W>
+    /* 0xb2 */ | <PUTFIELD_B_W>
+    /* 0xb3 */ | <PUTFIELD_S_W>
+    /* 0xb4 */ | <PUTFIELD_I_W>
+    /* 0xb5 */ | <PUTFIELD_A_THIS>
+    /* 0xb6 */ | <PUTFIELD_B_THIS>
+    /* 0xb7 */ | <PUTFIELD_S_THIS>
+    /* 0xb8 */ | <PUTFIELD_I_THIS>
+  )>
+}
+
+TOKEN :
+{
+  <LABEL: "L" (<DIGIT>)+>
+  | <NAME: <WORD> ("/" <WORD>)*>
+  | <WORD: <LETTER> (<LETTER> | <DIGIT>)*>
+  | <#DIGIT: ["0"-"9"]>
+  | <#LETTER: ["A"-"Z", "a"-"z", "_", "<", ">", "$"]>
+}
+
+/**********************************************
+ * THE JAVA CARD ASSEMBLY GRAMMAR STARTS HERE *
+ **********************************************/
+
+JCAFile PackageUnit() :
+{
+  JCAFile jcaFile;
+}
+{
+   jcaFile = PackageDeclaration()
+   <EOF>
+   {return jcaFile;}
+}
+
+JCAFile PackageDeclaration() :
+{
+  JCAFile jcFile;
+}
+{
+    {
+        ArrayList<JCAPackage> importedPackages;
+        ArrayList<JCAAppletEntry> applets;
+        ArrayList<JCAConstantPoolEntry> cpentries;
+        JCAClassComponent classComp = new JCAClassComponent();
+        Token packagename;
+        Token aid, version;
+    }
+
+    <PACKAGE> packagename = <NAME> <LBRACE>
+    <AID> aid = <AID_VALUE>  <SEMICOLON>
+    <VERSION> version = <IDENTIFIER> <SEMICOLON>
+    {
+        // Extracting AID value
+        String[] aid_strings = aid.image.split(":");
+        byte[] aid_decoded = new byte[aid_strings.length];
+        int foo = 0;
+        for (String element: aid_strings) {
+            aid_decoded[foo] = Integer.decode(element).byteValue();
+            foo++;
+        }
+
+        // Decoding version
+        String[] versions = version.image.split("\\.");
+        byte majorVersion = Integer.decode(versions[0]).byteValue();
+        byte minorVersion = Integer.decode(versions[1]).byteValue();
+
+        jcFile =
+            new JCAFile(packagename.image, new AID(aid_decoded), minorVersion, majorVersion);
+    }
+    ( // Optionnal
+        importedPackages = ImportsUnit()
+        {
+            JCAImportComponent jcimport = new JCAImportComponent(importedPackages);
+            jcFile.setImportedPackages(jcimport);
+        }
+    )?
+    ( // Optionnal
+        applets = AppletUnit()
+        {
+            JCAAppletComponent jcapplet = new JCAAppletComponent(applets);
+            jcFile.setApplets(jcapplet);
+        }
+    )?
+    ( // Mandatory. An empty Constant Pool component is not in the JCA File.
+        cpentries = ConstantPoolUnit()
+        {
+            JCAConstantPoolComponent jccp = new JCAConstantPoolComponent(cpentries);
+            jcFile.setConstantPool(jccp);
+        }
+    )?
+    (InterfaceUnit(classComp) | ClassUnit(classComp))+
+    {jcFile.setClasses(classComp);}
+  <RBRACE>
+  {return jcFile;}
+}
+
+ArrayList<JCAPackage> ImportsUnit() :
+{ }
+{
+
+    {
+        ArrayList<JCAPackage> importedPackages = new ArrayList<JCAPackage>();
+        Token aid, version;
+    }
+
+    <IMPORTS> <LBRACE>
+    (
+        aid = <AID_VALUE>
+        version = <IDENTIFIER>
+        <SEMICOLON>
+        {
+            // Extracting AID value
+            String[] aid_strings = aid.image.split(":");
+            byte[] aid_decoded = new byte[aid_strings.length];
+            int foo = 0;
+            for (String element: aid_strings) {
+                aid_decoded[foo] = Integer.decode(element).byteValue();
+                foo++;
+            }
+
+            // Decoding version
+            String[] versions = version.image.split("\\.");
+            byte majorVersion = Integer.decode(versions[0]).byteValue();
+            byte minorVersion = Integer.decode(versions[1]).byteValue();
+            importedPackages.add
+                (new JCAPackage (new AID(aid_decoded), minorVersion, majorVersion));
+        }
+    )+
+  <RBRACE>
+  {return importedPackages;}
+}
+
+ArrayList<JCAAppletEntry> AppletUnit() :
+{ }
+{
+    {
+        ArrayList<JCAAppletEntry> applets = new ArrayList<JCAAppletEntry>();
+        Token aid, classname;
+    }
+
+    <APPLET> <LBRACE>
+    (
+        aid = <AID_VALUE> classname = <NAME> <SEMICOLON>
+        {
+            // Extracting AID value
+            String[] aid_strings = aid.image.split(":");
+            byte[] aid_decoded = new byte[aid_strings.length];
+            int foo = 0;
+            for (String element: aid_strings) {
+                aid_decoded[foo] = Integer.decode(element).byteValue();
+                foo++;
+            }
+
+            applets.add(new JCAAppletEntry(new AID(aid_decoded), classname.image));
+        }
+    )+
+  <RBRACE>
+  {return applets;}
+}
+
+ArrayList<JCAConstantPoolEntry> ConstantPoolUnit():
+{ }
+{
+    {
+        ArrayList<JCAConstantPoolEntry> cpentries = new ArrayList<JCAConstantPoolEntry>();
+        JCAConstantPoolEntry cpentry;
+        JCADescriptor descriptor;
+    }
+
+    <CONSTANTPOOL> <LBRACE>
+    (
+        // cpentry = ConstantPoolEntry() <SEMICOLON>
+        (
+          cpentry = CP_ClassRef()         {cpentries.add(cpentry);} |
+          cpentry = CP_InstanceFieldRef() {cpentries.add(cpentry);} |
+          cpentry = CP_StaticFieldRef()   {cpentries.add(cpentry);} |
+          cpentry = CP_StaticMethodRef()  {cpentries.add(cpentry);} |
+          cpentry = CP_VirtualMethodRef() {cpentries.add(cpentry);} |
+          cpentry = CP_SuperMethodRef()   {cpentries.add(cpentry);} |
+          descriptor = CP_Descriptor()    {cpentries.get(cpentries.size() - 1).addDescriptor(descriptor);}
+        ) <SEMICOLON>
+    )+
+    <RBRACE>
+    {return cpentries;}
+}
+
+JCAConstantPoolEntry CP_ClassRef():
+{ }
+{
+    {
+        JCACPClassRef classref;
+        Token token;
+    }
+    <CLASSREF>
+    (
+        token = <IDENTIFIER>
+        {
+            String[] versions = token.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken = Integer.decode(versions[1]).byteValue();
+            classref = new JCACPClassRef(packageToken, classToken);
+        }
+        |
+        token = <NAME>
+        {
+            classref = new JCACPClassRef(token.image);
+        }
+    )
+    {return (JCAConstantPoolEntry) classref;}
+}
+
+JCADescriptor CP_Descriptor():
+{ }
+{
+    {
+       JCADescriptor descriptor;
+       Token type, identifier;
+    }
+
+    <DESCRIPTOR> type = <CP_TYPE> identifier = <IDENTIFIER>
+    {
+        if((type.image.charAt(0) != 'L') && (type.image.charAt(type.image.length() - 1) != ';')) {
+            throw new ParseException("Parsed value (" + type.image + ") is incorrect");
+        }
+
+        String[] versions = identifier.image.split("\\.");
+        byte packageToken = Integer.decode(versions[0]).byteValue();
+        byte classToken   = Integer.decode(versions[1]).byteValue();
+
+        descriptor = new JCADescriptor
+            (type.image.substring(1, type.image.length() - 1), packageToken, classToken);
+
+        return descriptor;
+    }
+}
+
+JCAConstantPoolEntry CP_InstanceFieldRef():
+{ }
+{
+    {
+        JCAType type;
+        Token name, tokenName;
+    }
+    <INSTANCEFIELDREF> type = FieldType()
+    (
+        name = <NAME>
+        {
+            return new JCACPInstanceFieldRef(type, name.image);
+        }
+    |
+        tokenName = <CP_METHOD>
+        {
+            String[] versions = tokenName.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken   = Integer.decode(versions[1]).byteValue();
+            byte fieldToken   = Integer.decode(versions[2]).byteValue();
+            return new JCACPInstanceFieldRef(type, packageToken, classToken, fieldToken);
+        }
+    )
+}
+
+JCAConstantPoolEntry CP_StaticFieldRef():
+{ }
+{
+    {
+        JCAType type;
+        Token name, tokenName;
+    }
+    <STATICFIELDREF> type = FieldType()
+    (
+        name = <NAME>
+        {
+            return new JCACPStaticFieldRef(type, name.image);
+        }
+    |
+        tokenName = <CP_METHOD>
+        {
+            String[] versions = tokenName.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken   = Integer.decode(versions[1]).byteValue();
+            byte fieldToken  = Integer.decode(versions[2]).byteValue();
+            return new JCACPStaticFieldRef(type, packageToken, classToken, fieldToken);
+        }
+    )
+}
+
+JCAConstantPoolEntry CP_StaticMethodRef():
+{ }
+{
+    {
+        JCACPMethodSignature staticMethodRef;
+    }
+    <STATICMETHODREF> staticMethodRef = MethodSignature(null)
+    {
+        staticMethodRef.setMethodType(CPMethodSignatureType.STATIC_METHOD);
+        return staticMethodRef;
+    }
+}
+
+JCAConstantPoolEntry CP_VirtualMethodRef():
+{ }
+{
+    {
+        JCACPMethodSignature virtualMethodRef;
+    }
+
+    <VIRTUALMETHODREF> virtualMethodRef = MethodSignature(null)
+    {
+        virtualMethodRef.setMethodType(CPMethodSignatureType.VIRTUAL_METHOD);
+        return virtualMethodRef;
+    }
+}
+
+JCAConstantPoolEntry CP_SuperMethodRef():
+{ }
+{
+    {
+        JCACPMethodSignature superMethodRef;
+    }
+
+    <SUPERMETHODREF> superMethodRef = MethodSignature(null)
+    {
+        superMethodRef.setMethodType(CPMethodSignatureType.SUPER_METHOD);
+        return superMethodRef;
+    }
+}
+
+JCAType FieldType():
+{ }
+{
+    {
+        JCAType type;
+        Token token;
+    }
+    (
+        token = <PRIMITIVE_TYPE> {type = new JCAType(Type.valueOf(token.image.toUpperCase()), false);}
+        | token = <NAME> {type = new JCAType(token.image, false);}
+        | token = <IDENTIFIER>
+            {
+                String[] versions = token.image.split("\\.");
+                byte packageToken = Integer.decode(versions[0]).byteValue();
+                byte classToken   = Integer.decode(versions[1]).byteValue();
+
+                type = new JCAType(packageToken, classToken, false);
+            }
+    )
+    (<LBRACKET> <RBRACKET> {type.setArray(true);})?
+    {return type;}
+}
+
+JCACPMethodSignature MethodSignature(JCAObject o):
+{
+    JCACPMethodSignature methodSignature;
+    Token methodName, parameters, returnType;
+}
+{
+    (
+        methodName = <CP_METHOD>
+        {
+            String[] versions = methodName.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken   = Integer.decode(versions[1]).byteValue();
+            byte methodToken  = Integer.decode(versions[2]).byteValue();
+            methodSignature = new JCACPMethodSignature(packageToken, classToken, methodToken);
+        }
+        | methodName = <NAME>
+        {
+            if(o == null) {
+                methodSignature = new JCACPMethodSignature(methodName.image);
+            } else {
+                methodSignature = new JCACPMethodSignature(o.getName() + "/" + methodName.image);
+            }
+        }
+    )
+    <LPAREN>
+    [
+        parameters = <CP_TYPE>
+        {
+            ArrayList<JCAType> params = new ArrayList<JCAType>();
+
+            for (int index = 0; index < parameters.image.length();) {
+                JCAType jcaType =
+                    this.getType(parameters.image.substring(index, parameters.image.length()), false);
+
+                if(jcaType.isArray()) {
+                    index++;
+                } else if((jcaType.getName() != null) && (jcaType.getName().length() != 0)) {
+                    index += jcaType.getName().length()
+                             + 1 /* L */ + 1 /* ; */;
+                } else {
+                    index++;
+                }
+
+                params.add(jcaType);
+            }
+
+            methodSignature.setParameters(params);
+        }
+    ]
+    <RPAREN>
+
+    returnType = <CP_TYPE>
+    {
+        methodSignature.setReturnType(this.getType(returnType.image, false));
+    }
+    {return methodSignature;}
+}
+
+void InterfaceUnit(JCAClassComponent classComp):
+{ }
+{
+    {
+        JCAInterface jcaInterface;
+        boolean isAbstract = false, isShareable = false, isRemote = false;
+        ArrayList<JCACPClassRef> superInterfaces;
+        Token accessor = null, name, Tindex = null;
+    }
+    <INTERFACE>
+    [accessor = <PUBLIC> | accessor = <PRIVATE> | accessor = <PROTECTED>]
+    [<ABSTRACT> {isAbstract = true;}] name = <NAME> [Tindex = <INTEGER_LITERAL>]
+    <LBRACE>
+    [<SHAREABLE> <SEMICOLON> {isShareable = true;}]
+    [<REMOTE>  <SEMICOLON> {isRemote = true;}]
+    {
+        short index = 0;
+
+        if(Tindex != null) {
+            index = (short) Integer.parseInt(Tindex.image);
+            jcaInterface = new JCAInterface(isAbstract, name.image, isShareable, isRemote, true, index);
+        } else {
+            jcaInterface = new JCAInterface(isAbstract, name.image, isShareable, isRemote, false, (short) -1);
+        }
+    }
+    [
+        superInterfaces = SuperInterfaceUnit()
+        {
+            jcaInterface.setSuperInterfaces(superInterfaces);
+        }
+    ]
+    [FieldList(jcaInterface)]
+    [(MethodDescription(jcaInterface))+]
+    <RBRACE>
+    {
+        if(accessor != null) {
+            jcaInterface.setAccessor(JCAAccessor.valueOf(accessor.image.toUpperCase()));
+        }
+
+        classComp.getClasses().add(jcaInterface);
+    }
+}
+
+ArrayList<JCACPClassRef> SuperInterfaceUnit():
+{ }
+{
+    {
+        ArrayList<JCACPClassRef> superInterfaces = new ArrayList<JCACPClassRef>();
+        Token superInterface;
+    }
+    <SUPER_INTERFACE> <LBRACE>
+    (
+        (
+            superInterface = <IDENTIFIER>
+            {
+                String[] versions = superInterface.image.split("\\.");
+                byte packageToken = Integer.decode(versions[0]).byteValue();
+                byte classToken   = Integer.decode(versions[1]).byteValue();
+                JCACPClassRef classRef = new JCACPClassRef(packageToken, classToken);
+                superInterfaces.add(classRef);
+            }
+        |
+            superInterface = <NAME>
+            {
+                classRef = new JCACPClassRef(superInterface.image);
+                superInterfaces.add(classRef);
+            }
+        ) <SEMICOLON>
+    )+ <RBRACE>
+    { return superInterfaces; }
+}
+
+void ClassUnit(JCAClassComponent classComp):
+{ }
+{
+    {
+        JCAClass jcaClass;
+        boolean isAbstract = false, isFinal = false, isRemote = false;
+        Token accessor = null, name, Tindex = null;
+    }
+    <CLASS>
+    [accessor = <PUBLIC> | accessor = <PRIVATE> | accessor = <PROTECTED>]
+    [<ABSTRACT> {isAbstract = true;}]
+    [<FINAL> {isFinal = true;}] name = <NAME> [Tindex = <INTEGER_LITERAL>]
+    {
+        short index = 0;
+
+        if(Tindex != null) {
+            index = (short) Integer.parseInt(Tindex.image);
+            jcaClass = new JCAClass(isAbstract, isFinal, name.image, true, index);
+        } else {
+            jcaClass = new JCAClass(isAbstract, isFinal, name.image, false, (short) -1);
+        }
+    }
+    [
+        <EXTENDS>
+        (
+            name = <IDENTIFIER>
+            {
+                String[] versions = name.image.split("\\.");
+                byte packageToken = Integer.decode(versions[0]).byteValue();
+                byte classToken   = Integer.decode(versions[1]).byteValue();
+                JCACPClassRef superClass = new JCACPClassRef(packageToken, classToken);
+                jcaClass.setExtended(superClass);
+            }
+        |
+            name = <NAME>
+            {
+                superClass = new JCACPClassRef(name.image);
+                jcaClass.setExtended(superClass);
+            }
+        )
+    ]
+    <LBRACE>
+
+    [<SHAREABLE> <SEMICOLON> {jcaClass.setShareable(true);}]
+    [<REMOTE> <SEMICOLON> {jcaClass.setRemote(true);}]
+    [FieldList(jcaClass)]
+    [PublicMethodList(jcaClass)]
+    [PackageMethodList(jcaClass)]
+    [ImplementedInterfaceInfoTable(jcaClass)]
+    [ImplementedRemoteInterfaceInfoTable(jcaClass)]
+    (MethodList(jcaClass))*
+    <RBRACE>
+
+    {
+        if(accessor != null) {
+            jcaClass.setAccessor(JCAAccessor.valueOf(accessor.image.toUpperCase()));
+        }
+
+        classComp.getClasses().add(jcaClass);
+    }
+}
+
+void FieldList(JCAObject jcaObject):
+{ }
+{
+    {
+        JCAType type;
+    }
+    <FIELDS> <LBRACE>
+    (
+        {
+            Token accessor = null, isStatic = null,
+                  isFinal = null, name = null,
+                  TdefaultValue = null, Tindex = null;
+            ArrayList<Integer> initValues = new ArrayList<Integer>();
+        }
+        [accessor = <PUBLIC> | accessor = <PRIVATE> | accessor = <PROTECTED>]
+        [isStatic = <STATIC>]
+        [isFinal = <FINAL>] type = FieldType()
+        (name = <NAME> | name = <CP_TYPE>) // XXX: one letter field name requires CP_TYPE to avoir jcaparser confusion.
+        [
+            // Field token value
+            Tindex = <INTEGER_LITERAL>
+        ]
+        [
+            <EQUALS>
+            [<LBRACE>]
+            (
+                (
+                    TdefaultValue = <INTEGER_LITERAL>
+                |
+                    TdefaultValue = <BOOLEAN>
+                )
+                [<COMMA>]
+                {
+                    String value = TdefaultValue.image.toUpperCase();
+                    if(value.equals("TRUE")) {
+                        initValues.add(1);
+                    } else if (value.equals("FALSE")) {
+                        initValues.add(0);
+                    } else {
+                        initValues.add(Integer.parseInt(TdefaultValue.image));
+                    }
+                }
+            )+
+            [<RBRACE>]
+        ]
+        <SEMICOLON>
+        {
+            JCAClassField field;
+
+            if(Tindex != null) {
+                short index = (short) Integer.parseInt(Tindex.image);
+                field = new JCAClassField
+                    (index, (isFinal != null), (isStatic != null), type, jcaObject.getName() + "/" + name.image, initValues);
+            } else {
+                field = new JCAClassField
+                    ((isFinal != null), (isStatic != null), type, jcaObject.getName() + "/" + name.image, initValues);
+            }
+
+            if(accessor != null) {
+                field.setAccessor(JCAAccessor.valueOf(accessor.image.toUpperCase()));
+            }
+
+            jcaObject.getFields().add(field);
+        }
+    )+
+  <RBRACE>
+}
+
+void PublicMethodList(JCAClass jcaClass):
+{ }
+{
+    {
+        JCACPMethodSignature methodSignature;
+        Token tableBase;
+    }
+    <PUBLIC_METHODTABLE> tableBase = <INTEGER_LITERAL> <LBRACE>
+    {jcaClass.setPublicMethodsTableBase((byte) Integer.parseInt(tableBase.image));}
+    (
+        methodSignature = MethodSignature(jcaClass) <SEMICOLON>
+        {
+            jcaClass.getPublicMethodsTable().add(methodSignature);
+        }
+    )*
+  <RBRACE>
+}
+
+void PackageMethodList(JCAClass jcaClass):
+{ }
+{
+    {
+        JCACPMethodSignature methodSignature;
+        Token tableBase;
+    }
+    <PACKAGE_METHODTABLE> tableBase = <INTEGER_LITERAL> <LBRACE>
+    {jcaClass.setPackageMethodsTableBase((byte) Integer.parseInt(tableBase.image));}
+    (
+        methodSignature = MethodSignature(jcaClass) <SEMICOLON>
+        {
+            jcaClass.getPackageMethodsTable().add(methodSignature);
+        }
+    )*
+  <RBRACE>
+}
+
+void ImplementedInterfaceInfoTable(JCAClass jcaClass):
+{ }
+{
+    {
+        JCACPClassRef interfaceName;
+        ArrayList<Byte> implementedMethods = new ArrayList<Byte>();
+        Token identifier, name, implementedMethod;
+    }
+    <INTERFACE_TABLE> <LBRACE>
+    (
+      <INTERFACE>
+      (
+        identifier = <IDENTIFIER>
+        {
+            String[] versions = identifier.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken   = Integer.decode(versions[1]).byteValue();
+
+            interfaceName = new JCACPClassRef(packageToken, classToken);
+        }
+        |
+        name = <NAME>
+        {
+            interfaceName = new JCACPClassRef(name.image);
+        }
+      )
+      <LBRACE>
+        (
+            implementedMethod = <INTEGER_LITERAL> <SEMICOLON>
+            {
+                byte value = (byte) Integer.parseInt(implementedMethod.image);
+                implementedMethods.add(value);
+            }
+        )*
+      <RBRACE>
+
+      {
+        JCAImplementedInterfaceInfo implementedInterfaceInfo =
+            new JCAImplementedInterfaceInfo(interfaceName, (ArrayList<Byte>) implementedMethods.clone());
+        jcaClass.getImplementedInterfaceInfoTable().add(implementedInterfaceInfo);
+        implementedMethods.clear();
+      }
+    )+
+    <RBRACE>
+}
+
+void ImplementedRemoteInterfaceInfoTable(JCAClass jcaClass):
+{ }
+{
+    {
+        JCACPClassRef interfaceName;
+        ArrayList<Byte> remoteImplementedMethods = new ArrayList<Byte>();
+        Token identifier, name, remoteImplementedMethod;
+    }
+    <REMOTE_INTERFACE_TABLE> <LBRACE>
+    (
+      <INTERFACE>
+      (
+        identifier = <IDENTIFIER>
+        {
+            String[] versions = identifier.image.split("\\.");
+            byte packageToken = Integer.decode(versions[0]).byteValue();
+            byte classToken   = Integer.decode(versions[1]).byteValue();
+
+            interfaceName = new JCACPClassRef(packageToken, classToken);
+        }
+        |
+        name = <NAME>
+        {
+            interfaceName = new JCACPClassRef(name.image);
+        }
+      )
+      <LBRACE>
+        (
+            remoteImplementedMethod = <INTEGER_LITERAL> <SEMICOLON>
+            {
+                byte value = (byte) Integer.parseInt(remoteImplementedMethod.image);
+                remoteImplementedMethods.add(value);
+            }
+        )*
+      <RBRACE>
+
+      {
+        JCAImplementedInterfaceInfo remoteImplementedInterfaceInfo =
+            new JCAImplementedInterfaceInfo(interfaceName, remoteImplementedMethods);
+        jcaClass.getRemoteImplementedInterfaceInfoTable().add(remoteImplementedInterfaceInfo);
+      }
+    )*
+    <RBRACE>
+}
+
+void MethodDescription(JCAObject jcaObject):
+{ }
+{
+    {
+        Token accessor = null,
+              isAbstract = null,
+              isStatic = null,
+              isFinal = null,
+              Tindex = null;
+        JCACPMethodSignature methodSignature;
+        JCADescriptor descriptor;
+        ArrayList<JCADescriptor> descriptors = new ArrayList<JCADescriptor>();
+    }
+
+    <METHOD> [accessor = <PUBLIC> | accessor = <PRIVATE> | accessor = <PROTECTED>]
+    [isAbstract = <ABSTRACT>]
+    [isStatic = <STATIC>] [isFinal = <FINAL>]
+    methodSignature = MethodSignature(jcaObject) [Tindex = <INTEGER_LITERAL>] <LBRACE>
+    (descriptor = CP_Descriptor() <SEMICOLON> {descriptors.add(descriptor);})?
+    {
+        JCAClassMethodSignature signature = new
+            JCAClassMethodSignature((isAbstract != null),
+                                    (isFinal != null),
+                                    false,
+                                    methodSignature.getMethodName(),
+                                    methodSignature.getParameters(),
+                                    descriptors,
+                                    methodSignature.getReturnType());
+
+        JCAClassMethod method;
+
+        if(Tindex != null) {
+            short index = (short) Integer.parseInt(Tindex.image);
+            method = new JCAClassMethod((isStatic != null), index, signature);
+        } else {
+            method = new JCAClassMethod((isStatic != null), signature);
+        }
+
+        if(accessor != null) {
+            method.setAccessor(JCAAccessor.valueOf(accessor.image.toUpperCase()));
+        }
+
+        jcaObject.getMethods().add(method);
+    }
+
+    <RBRACE>
+}
+
+void MethodList(JCAClass jcaClass):
+{ }
+{
+    {
+        JCACPMethodSignature methodSignature;
+        JCAMethodBytecodes bytecodes;
+        JCADescriptor descriptor;
+        ArrayList<JCADescriptor> descriptors = new ArrayList<JCADescriptor>();
+        Token TmethodStack, TmethodLocals;
+        Token accessor = null, isAbstract = null, isStatic = null, isNative = null, isFinal = null, Tindex = null;
+        byte methodStack = 0, methodLocals = 0;
+    }
+
+  <METHOD>
+    [accessor = <PUBLIC> | accessor = <PRIVATE> | accessor = <PROTECTED>]
+    [isAbstract = <ABSTRACT>]
+    [isStatic = <STATIC>]
+    [isFinal = <FINAL>]
+    [isNative = <NATIVE>]
+    methodSignature = MethodSignature(jcaClass)
+    [Tindex = <INTEGER_LITERAL>]
+    <LBRACE>
+        (
+            <METHOD_STACK> TmethodStack = <INTEGER_LITERAL> <SEMICOLON>
+            <METHOD_LOCALS> TmethodLocals = <INTEGER_LITERAL> <SEMICOLON>
+            {
+                methodStack = (byte) Integer.parseInt(TmethodStack.image);
+                methodLocals = (byte) Integer.parseInt(TmethodLocals.image);
+            }
+        )?
+        {
+            bytecodes = new JCAMethodBytecodes(methodStack, methodLocals);
+        }
+        (
+            descriptor = CP_Descriptor() <SEMICOLON>
+            {descriptors.add(descriptor);}
+        )*
+        (Bytecode(bytecodes))*
+        (ExceptionHandler(bytecodes))?
+    <RBRACE>
+    {
+        JCAClassMethodSignature signature = new
+            JCAClassMethodSignature((isAbstract != null),
+                                    (isFinal != null),
+                                    (isNative != null),
+                                    methodSignature.getMethodName(),
+                                    methodSignature.getParameters(),
+                                    descriptors,
+                                    methodSignature.getReturnType());
+
+        JCAClassMethod methodClass;
+
+        if(Tindex != null) {
+            short index = (short) Integer.parseInt(Tindex.image);
+            methodClass = new JCAClassMethod((isStatic != null), index, signature);
+        } else {
+            methodClass = new JCAClassMethod((isStatic != null), signature);
+        }
+
+        methodClass.setDescriptors(descriptors);
+        methodClass.setMethodBytecodes(bytecodes);
+
+        if(accessor != null) {
+            methodClass.setAccessor(JCAAccessor.valueOf(accessor.image.toUpperCase()));
+        }
+
+        jcaClass.getMethods().add(methodClass);
+    }
+}
+
+void Bytecode(JCAMethodBytecodes method):
+{ }
+{
+    {
+        Bytecode opcode;
+        ArrayList<String> parameters = new ArrayList<String>();
+        Token Tlabel, Tbytecode, Tparameter, TlabelParameter;
+    }
+
+    // Each method starts with a label (L0)
+    (
+        Tlabel = <LABEL> <COLON>
+        {
+            String[] label = Tlabel.image.split("L");
+            short labelValue = Integer.decode(label[1]).byteValue();
+
+            if(method.getLabels().size() != labelValue) {
+                throw new ParseException("Incorrect label value.");
+            }
+
+            method.getLabels().add((short) method.getInstructions().size());
+        }
+    )?
+    Tbytecode = <BYTECODE>
+    {
+        opcode = Bytecode.valueOf(Tbytecode.image.toUpperCase());
+    }
+    (
+        Tparameter = <INTEGER_LITERAL> {parameters.add(Tparameter.image);}
+    |
+        TlabelParameter = <LABEL>      {parameters.add(TlabelParameter.image);}
+    )* <SEMICOLON>
+    {
+        Instruction instruction = InstructionsFactory.getInstruction(opcode, parameters);
+        method.getInstructions().add(instruction);
+    }
+}
+
+void ExceptionHandler(JCAMethodBytecodes method):
+{ }
+{
+    {
+        Token TstartOffset, TendOffset, ThandlerOffset, TcatchTypeIndex;
+    }
+
+    <EXCEPTION_TABLE> <LBRACE>
+    (
+        // start_offset           | endOffset            | handlerOffset             | catchTypeIndex
+           TstartOffset = <LABEL>   TendOffset = <LABEL>   ThandlerOffset = <LABEL>    TcatchTypeIndex = <INTEGER_LITERAL>
+        <SEMICOLON>
+        {
+            short startOffset = (short) Integer.parseInt(TstartOffset.image.substring(1));
+            short endOffset = (short) Integer.parseInt(TendOffset.image.substring(1));
+            short handlerOffset = (short) Integer.parseInt(ThandlerOffset.image.substring(1));
+
+            short catchTypeIndex = (short) Integer.parseInt(TcatchTypeIndex.image);
+
+            JCAExceptionHandler jcaExceptionHandler =
+                new JCAExceptionHandler(startOffset, endOffset, handlerOffset, catchTypeIndex);
+            method.getExceptionsHandlers().add(jcaExceptionHandler);
+        }
+    )+
+    <RBRACE>
+}
