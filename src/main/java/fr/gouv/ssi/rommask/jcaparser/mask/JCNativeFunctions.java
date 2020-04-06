@@ -89,6 +89,7 @@ public class JCNativeFunctions {
      */
     public void writeCHeader(PrintWriter out) {
 
+        out.write("/*\n");
         out.write(" * This file was automatically generated.\n");
         out.write(" *\n");
         out.write(" * description: definition callJCNativeMethod to execute native method from JCVM.\n");
